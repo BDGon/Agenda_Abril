@@ -5,6 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Aula Virtual Abril</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // TU CONFIGURACIÓN EXACTA
+    const firebaseConfig = {
+      apiKey: "AIzaSyCHAbE43IMZuVIbXQF375HCrxAWaXUEyMk",
+      authDomain: "agendadeabril.firebaseapp.com",
+      projectId: "agendadeabril",
+      storageBucket: "agendadeabril.firebasestorage.app",
+      messagingSenderId: "150128924404",
+      appId: "1:150128924404:web:23ad48fa674515721770a1"
+    };
+
+    // Inicializar
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Hacer accesibles las funciones de Firebase al resto del código
+    window.db = db;
+    window.collection = collection;
+    window.addDoc = addDoc;
+    window.onSnapshot = onSnapshot;
+    window.deleteDoc = deleteDoc;
+    window.doc = doc;
+    window.updateDoc = updateDoc;
+    window.query = query;
+    window.orderBy = orderBy;
+  </script>
+
   <script>
     tailwind.config = {
       theme: {
@@ -29,8 +60,6 @@
       content: ''; position: absolute; left: 15px; top: 40px; bottom: -16px; width: 2px; background: #ddd6fe;
     }
     .feed-item:last-child::before { display: none; }
-    
-    /* Estilos para el Zoom */
     #imageModal { touch-action: none; } 
     #modalImageFull { 
         transform-origin: center center; 
@@ -64,7 +93,7 @@
     <header class="bg-white shadow-sm sticky top-0 z-30 pt-safe">
       <div class="px-4 py-5">
         <h1 class="text-2xl font-bold text-violet-700">Mis Alumnos</h1>
-        <p class="text-violet-400 text-sm mt-1">Gestión de clases </p>
+        <p class="text-violet-400 text-sm mt-1">Gestión de clases (Nube ☁️)</p>
       </div>
       <div class="px-4 pb-4">
         <div class="relative">
@@ -78,8 +107,8 @@
     </header>
 
     <main class="px-4 py-6">
-      <div id="studentList" class="space-y-4">
-        </div>
+      <div id="loadingIndicator" class="text-center text-violet-400 py-10">Cargando datos...</div>
+      <div id="studentList" class="space-y-4"></div>
     </main>
 
     <button onclick="showAddStudentModal()" class="fixed bottom-20 right-6 w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-110 active:scale-95 z-30">
@@ -173,8 +202,7 @@
           </button>
         </div>
         
-        <div id="materialFeed" class="space-y-0">
-          </div>
+        <div id="materialFeed" class="space-y-0"></div>
       </div>
     </main>
   </div>
@@ -187,8 +215,7 @@
       </div>
     </header>
     <main class="px-4 py-6">
-      <div id="weeklySchedule" class="space-y-4">
-        </div>
+      <div id="weeklySchedule" class="space-y-4"></div>
     </main>
     <button onclick="showAddClassModal()" class="fixed bottom-20 right-6 w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-110 active:scale-95 z-30">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -264,164 +291,63 @@
     </div>
   </div>
 
-  <script>
-    // --- LÓGICA DE LA APLICACIÓN ---
+  <script type="module">
+    // VARIABLES GLOBALES
+    let students = [];
+    let weeklySchedule = [];
+    let currentStudentId = null;
+    let editingClassId = null;
 
-    let students = JSON.parse(localStorage.getItem('teacherApp_students')) || [];
-    let weeklySchedule = JSON.parse(localStorage.getItem('teacherApp_schedule')) || [];
-    let currentStudent = null;
-    let editingStudentId = null;
-    let editingClassId = null; // Nuevo: Para saber si estamos editando una clase
-
-    function saveData() {
-        try {
-            localStorage.setItem('teacherApp_students', JSON.stringify(students));
-            localStorage.setItem('teacherApp_schedule', JSON.stringify(weeklySchedule));
-        } catch (e) {
-            alert("¡Memoria llena! Intenta borrar algunas fotos antiguas.");
-        }
-    }
-
-    function init() {
-        renderStudentList();
-        renderWeeklySchedule();
-    }
-
-    // --- MANEJO DE IMÁGENES (COMPRESIÓN) ---
-    function processImage(input) {
-        if (input.files && input.files[0]) {
-            const file = input.files[0];
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const MAX_WIDTH = 800;
-                    const scaleSize = MAX_WIDTH / img.width;
-                    canvas.width = MAX_WIDTH;
-                    canvas.height = img.height * scaleSize;
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                    if(currentStudent) {
-                        currentStudent.materials.push({ id: Date.now(), type: 'image', content: dataUrl });
-                        saveData();
-                        renderMaterialFeed();
-                    }
-                }
+    // --- ESCUCHADORES EN TIEMPO REAL (SYNC AUTOMÁTICO) ---
+    function setupListeners() {
+        // Escuchar cambios en la colección 'students'
+        const qStudents = window.query(window.collection(window.db, "students"), window.orderBy("name"));
+        window.onSnapshot(qStudents, (snapshot) => {
+            students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Ocultar indicador de carga si existe
+            const loader = document.getElementById('loadingIndicator');
+            if(loader) loader.style.display = 'none';
+            
+            window.renderStudentList();
+            
+            // Si estamos viendo un perfil y se actualiza (ej. otro dispositivo sube foto), refrescar
+            if(currentStudentId) {
+                const updatedStudent = students.find(s => s.id === currentStudentId);
+                if(updatedStudent) showStudentDetail(updatedStudent);
             }
-            reader.readAsDataURL(file);
-        }
-        input.value = '';
+        });
+
+        // Escuchar cambios en la colección 'schedule'
+        const qSchedule = window.query(window.collection(window.db, "schedule"));
+        window.onSnapshot(qSchedule, (snapshot) => {
+            weeklySchedule = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            window.renderWeeklySchedule();
+        });
     }
 
-    // --- LÓGICA DE ZOOM Y PAN (PELLIZCAR) ---
-    // Variables para el control de gestos
-    let scale = 1, currentScale = 1;
-    let pointX = 0, pointY = 0, startX = 0, startY = 0;
-    let isDragging = false;
-    let initialDistance = 0;
+    // Arrancar la app (esperamos un poco a que cargue Firebase)
+    setTimeout(setupListeners, 500);
 
-    const modalImage = document.getElementById('modalImageFull');
-    const modalContainer = document.getElementById('imageModal');
+    // --- FUNCIONES LÓGICAS (EXPUESTAS A WINDOW PARA EL HTML) ---
 
-    function openImageModal(url) {
-        modalImage.src = url;
-        modalContainer.classList.remove('hidden');
-        modalContainer.classList.add('flex');
-        resetZoom(); // Reiniciar zoom al abrir
-    }
-
-    function closeImageModal() {
-        modalContainer.classList.add('hidden');
-        modalContainer.classList.remove('flex');
-        setTimeout(() => { modalImage.src = ''; }, 200);
-    }
-
-    function resetZoom() {
-        scale = 1;
-        pointX = 0;
-        pointY = 0;
-        updateTransform();
-    }
-
-    function updateTransform() {
-        modalImage.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
-    }
-
-    // Eventos Táctiles para el Zoom
-    modalImage.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-            // Inicia Pellizco
-            isDragging = false;
-            initialDistance = Math.hypot(
-                e.touches[0].pageX - e.touches[1].pageX,
-                e.touches[0].pageY - e.touches[1].pageY
-            );
-            currentScale = scale;
-        } else if (e.touches.length === 1) {
-            // Inicia Arrastre (solo si está con zoom)
-            isDragging = true;
-            startX = e.touches[0].pageX - pointX;
-            startY = e.touches[0].pageY - pointY;
-        }
-    });
-
-    modalImage.addEventListener('touchmove', (e) => {
-        e.preventDefault(); // Prevenir scroll del navegador
-        
-        if (e.touches.length === 2) {
-            // Pellizcando (Zoom)
-            const dist = Math.hypot(
-                e.touches[0].pageX - e.touches[1].pageX,
-                e.touches[0].pageY - e.touches[1].pageY
-            );
-            // Calculamos el nuevo factor de escala
-            // Limitamos: mínimo 1x, máximo 4x
-            scale = Math.min(Math.max(1, currentScale * (dist / initialDistance)), 4);
-            updateTransform();
-        } else if (e.touches.length === 1 && isDragging && scale > 1) {
-            // Arrastrando (Pan) - Solo permitimos mover si hay zoom
-            pointX = e.touches[0].pageX - startX;
-            pointY = e.touches[0].pageY - startY;
-            updateTransform();
-        }
-    });
-
-    modalImage.addEventListener('touchend', (e) => {
-        isDragging = false;
-        if (scale < 1.1) {
-            // Si el zoom es muy pequeño al soltar, volvemos al centro
-            resetZoom();
-        }
-    });
-    
-    // Doble toque para resetear
-    let lastTap = 0;
-    modalImage.addEventListener('touchend', (e) => {
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
-        if (tapLength < 300 && tapLength > 0) {
-            if (scale > 1) resetZoom();
-            else {
-                scale = 2; // Zoom rápido
-                updateTransform();
-            }
-        }
-        lastTap = currentTime;
-    });
-
-
-    // --- GESTIÓN DE ALUMNOS ---
-    function renderStudentList(data = students) {
+    // 1. RENDERIZADO DE ALUMNOS
+    window.renderStudentList = function() {
         const container = document.getElementById('studentList');
+        // Usar la variable local 'students'
+        const data = students; 
+        
         if (data.length === 0) {
             container.innerHTML = `<div class="text-center py-12 opacity-50"><p>No hay alumnos aún.</p><p class="text-sm">Toca el botón + para empezar.</p></div>`;
             return;
         }
-        container.innerHTML = data.map(s => `
-            <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-4 border-l-4 border-violet-500" onclick="showStudentDetail(${s.id})">
+        
+        // Filtro de búsqueda si hay texto
+        const term = document.getElementById('searchInput').value.toLowerCase();
+        const filtered = data.filter(s => s.name.toLowerCase().includes(term) || s.subject.toLowerCase().includes(term));
+
+        container.innerHTML = filtered.map(s => `
+            <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-4 border-l-4 border-violet-500 cursor-pointer" onclick="openStudent('${s.id}')">
                 <div class="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center text-violet-700 font-bold text-lg">
                     ${getInitials(s.name)}
                 </div>
@@ -429,119 +355,92 @@
                     <h3 class="font-semibold text-gray-800">${s.name}</h3>
                     <p class="text-xs text-violet-500 font-medium uppercase">${s.subject}</p>
                 </div>
-                <button class="text-gray-300"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg></button>
+                <button class="text-gray-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                </button>
             </div>
         `).join('');
     }
 
-    function getInitials(name) { return name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase(); }
-
-    function filterStudents() {
-        const term = document.getElementById('searchInput').value.toLowerCase();
-        const filtered = students.filter(s => s.name.toLowerCase().includes(term) || s.subject.toLowerCase().includes(term));
-        renderStudentList(filtered);
+    window.filterStudents = function() {
+        window.renderStudentList();
     }
 
-    document.getElementById('addStudentForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const name = document.getElementById('newStudentName').value;
-        const subject = document.getElementById('newStudentSubject').value;
-        const address = document.getElementById('newStudentAddress').value;
-        const phone = document.getElementById('newStudentPhone').value;
-        const parent = document.getElementById('newStudentParent').value;
+    window.openStudent = function(id) {
+        currentStudentId = id;
+        const student = students.find(s => s.id === id);
+        if(student) showStudentDetail(student);
+    }
 
-        if (editingStudentId) {
-            const student = students.find(s => s.id === editingStudentId);
-            if (student) {
-                student.name = name;
-                student.subject = subject;
-                student.address = address;
-                student.phone = phone;
-                student.parent = parent;
-                if (currentStudent && currentStudent.id === editingStudentId) {
-                    showStudentDetail(editingStudentId); 
-                }
-            }
-        } else {
-            const newStudent = {
-                id: Date.now(),
-                name: name,
-                subject: subject,
-                address: address,
-                phone: phone,
-                parent: parent,
-                materials: []
-            };
-            students.push(newStudent);
-        }
-        saveData();
-        renderStudentList();
-        renderWeeklySchedule(); 
-        hideAddStudentModal();
-        e.target.reset();
-    });
-
-    // --- DETALLE DEL ALUMNO ---
-    function showStudentDetail(id) {
-        currentStudent = students.find(s => s.id === id);
-        if(!currentStudent) return;
-        document.getElementById('studentName').innerText = currentStudent.name;
-        document.getElementById('studentSubject').innerText = currentStudent.subject;
-        document.getElementById('studentAddress').innerText = currentStudent.address || "Sin dirección";
-        document.getElementById('studentPhone').innerText = currentStudent.phone || "---";
-        document.getElementById('studentPhone').href = currentStudent.phone ? `tel:${currentStudent.phone}` : "#";
-        document.getElementById('studentParent').innerText = currentStudent.parent || "---";
-        renderMaterialFeed();
+    function showStudentDetail(student) {
+        document.getElementById('studentName').innerText = student.name;
+        document.getElementById('studentSubject').innerText = student.subject;
+        document.getElementById('studentAddress').innerText = student.address || "Sin dirección";
+        document.getElementById('studentPhone').innerText = student.phone || "---";
+        document.getElementById('studentPhone').href = student.phone ? `tel:${student.phone}` : "#";
+        document.getElementById('studentParent').innerText = student.parent || "---";
+        
+        renderMaterialFeed(student);
+        
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         document.getElementById('detailView').classList.add('active');
         window.scrollTo(0,0);
     }
 
-    function editCurrentStudent() {
-        if(!currentStudent) return;
-        document.getElementById('newStudentName').value = currentStudent.name;
-        document.getElementById('newStudentSubject').value = currentStudent.subject;
-        document.getElementById('newStudentAddress').value = currentStudent.address;
-        document.getElementById('newStudentPhone').value = currentStudent.phone;
-        document.getElementById('newStudentParent').value = currentStudent.parent;
-        document.getElementById('modalTitle').innerText = "Editar Alumno";
-        editingStudentId = currentStudent.id;
-        document.getElementById('addStudentModal').classList.remove('hidden');
-        document.getElementById('addStudentModal').classList.add('flex');
-    }
+    // 2. GUARDAR / EDITAR ALUMNO (FIREBASE)
+    window.addStudentFormSubmit = async function(e) {
+        e.preventDefault();
+        const data = {
+            name: document.getElementById('newStudentName').value,
+            subject: document.getElementById('newStudentSubject').value,
+            address: document.getElementById('newStudentAddress').value,
+            phone: document.getElementById('newStudentPhone').value,
+            parent: document.getElementById('newStudentParent').value,
+            materials: [] // Inicializar array vacío si es nuevo
+        };
 
-    function deleteCurrentStudent() {
-        if(confirm("¿Estás seguro de eliminar a este alumno y todo su historial?")) {
-            students = students.filter(s => s.id !== currentStudent.id);
-            weeklySchedule = weeklySchedule.filter(c => c.studentId !== currentStudent.id);
-            saveData();
-            showHome();
-            renderStudentList();
-            renderWeeklySchedule();
+        try {
+            if(currentStudentId && document.getElementById('modalTitle').innerText.includes("Editar")) {
+                // Actualizar existente
+                await window.updateDoc(window.doc(window.db, "students", currentStudentId), {
+                    name: data.name,
+                    subject: data.subject,
+                    address: data.address,
+                    phone: data.phone,
+                    parent: data.parent
+                });
+            } else {
+                // Crear nuevo
+                await window.addDoc(window.collection(window.db, "students"), data);
+            }
+            window.hideAddStudentModal();
+            e.target.reset();
+        } catch (error) {
+            console.error("Error guardando alumno:", error);
+            alert("Error al guardar. Verifica tu conexión.");
         }
     }
 
-    function openInMaps() {
-        if(!currentStudent || !currentStudent.address) return alert("Agrega una dirección primero.");
-        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentStudent.address)}`;
-        window.open(url, '_blank');
-    }
-
-    // --- MURO Y RENDERIZADO DE FOTOS ---
-    function renderMaterialFeed() {
+    // 3. MATERIALES (NOTAS, FOTOS) EN FIREBASE
+    function renderMaterialFeed(student) {
         const feed = document.getElementById('materialFeed');
         feed.innerHTML = "";
         
-        if(currentStudent.materials.length === 0) {
+        const materials = student.materials || [];
+        if(materials.length === 0) {
             feed.innerHTML = `<p class="text-center text-gray-400 text-sm py-4">Sin notas aún.</p>`;
             return;
         }
-        const sorted = [...currentStudent.materials].sort((a,b) => b.id - a.id);
+
+        // Ordenar por fecha descendente
+        const sorted = [...materials].sort((a,b) => b.createdAt - a.createdAt);
+
         sorted.forEach(item => {
             let icon = '📝'; 
             let contentHtml = '';
             let colorClass = "border-l-4 border-violet-400";
             let typeLabel = "NOTA";
+
             if(item.type === 'link') {
                 icon = '🔗';
                 typeLabel = "LINK";
@@ -549,7 +448,7 @@
                 contentHtml = `
                     <p class="text-gray-800 font-medium mb-1">${item.title || 'Enlace adjunto'}</p>
                     <a href="${item.content}" target="_blank" class="text-blue-600 hover:underline text-xs break-all flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg> Abrir recurso
+                        Abrir recurso
                     </a>
                 `;
             } else if (item.type === 'image') {
@@ -558,22 +457,26 @@
                 colorClass = "border-l-4 border-pink-400";
                 contentHtml = `
                     <div class="rounded-lg overflow-hidden border border-gray-200 mt-1 cursor-pointer hover:opacity-90 transition-opacity" onclick="openImageModal('${item.content}')">
-                        <img src="${item.content}" alt="Foto de clase" class="w-full h-auto object-cover max-h-48">
+                        <img src="${item.content}" alt="Foto" class="w-full h-auto object-cover max-h-48">
                     </div>
                 `;
             } else {
                 contentHtml = `<p class="text-gray-700">${item.content}</p>`;
             }
-            const date = new Date(item.id).toLocaleDateString();
+
+            const date = new Date(item.createdAt).toLocaleDateString();
+            
             feed.innerHTML += `
                 <div class="feed-item relative pl-8 pb-6">
-                    <div class="absolute left-0 top-0 w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center text-sm shadow-sm z-10">${icon}</div>
+                    <div class="absolute left-0 top-0 w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center text-sm shadow-sm z-10">
+                        ${icon}
+                    </div>
                     <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-100 ${colorClass}">
                         <div class="flex justify-between items-center mb-2">
                             <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">${typeLabel}</span>
                             <div class="flex items-center gap-2">
                                 <span class="text-[10px] text-gray-400">${date}</span>
-                                <button onclick="deleteMaterialItem(${item.id})" class="text-gray-300 hover:text-red-500 transition-colors p-1">
+                                <button onclick="deleteMaterialItem(${item.createdAt})" class="text-gray-300 hover:text-red-500 transition-colors p-1">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
                             </div>
@@ -585,100 +488,88 @@
         });
     }
 
-    function deleteMaterialItem(itemId) {
-        if(confirm("¿Seguro que quieres borrar este elemento?")) {
-            currentStudent.materials = currentStudent.materials.filter(m => m.id !== itemId);
-            saveData();
-            renderMaterialFeed();
-        }
-    }
-
-    function addFeedNote() {
+    // Funciones para agregar items al array 'materials' en Firestore
+    window.addFeedNote = async function() {
+        if(!currentStudentId) return;
         const txt = document.getElementById('feedNoteInput').value.trim();
         if(!txt) return;
-        currentStudent.materials.push({ id: Date.now(), type: 'note', content: txt });
-        saveData();
-        renderMaterialFeed();
+        
+        const newItem = { type: 'note', content: txt, createdAt: Date.now() };
+        await updateStudentMaterials(newItem);
         document.getElementById('feedNoteInput').value = "";
     }
 
-    function attachLink() {
-        const url = prompt("Pega aquí el enlace (Drive, YouTube, etc):");
-        if(url) {
-            const name = prompt("¿Qué nombre le ponemos?", "Material");
-            if(name) {
-                currentStudent.materials.push({ id: Date.now(), type: 'link', content: url, title: name });
-                saveData();
-                renderMaterialFeed();
+    window.processImage = function(input) {
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const MAX_WIDTH = 600; // Reducimos para optimizar espacio en Firestore
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+                    
+                    if(currentStudentId) {
+                        const newItem = { type: 'image', content: dataUrl, createdAt: Date.now() };
+                        updateStudentMaterials(newItem);
+                    }
+                }
             }
+            reader.readAsDataURL(file);
+        }
+        input.value = '';
+    }
+
+    window.attachLink = async function() {
+        const url = prompt("Pega aquí el enlace:");
+        if(url && currentStudentId) {
+            const name = prompt("Nombre del enlace:", "Enlace");
+            const newItem = { type: 'link', content: url, title: name || 'Link', createdAt: Date.now() };
+            updateStudentMaterials(newItem);
         }
     }
 
-    // --- AGENDA SEMANAL Y CLASES ---
-    function renderWeeklySchedule() {
-        const container = document.getElementById('weeklySchedule');
-        const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-        const todayIndex = new Date().getDay() - 1; 
-        let html = "";
-        days.forEach((dayName, i) => {
-            const classes = weeklySchedule.filter(c => c.dayOfWeek == i).sort((a,b) => a.time.localeCompare(b.time));
-            const isToday = (i === todayIndex);
-            const headerClass = isToday ? "bg-violet-600 text-white shadow-md" : "bg-gray-100 text-gray-600";
-            html += `
-                <div class="rounded-xl overflow-hidden border border-gray-100 mb-4">
-                    <div class="px-4 py-2 ${headerClass} flex justify-between items-center">
-                        <span class="font-bold text-sm">${dayName}</span>
-                        ${isToday ? '<span class="text-[10px] bg-white/20 px-2 rounded-full">HOY</span>' : ''}
-                    </div>
-                    <div class="bg-white p-2">
-                        ${classes.length === 0 ? '<p class="text-xs text-gray-300 text-center py-2">Libre</p>' : ''}
-                        ${classes.map(c => {
-                            const st = students.find(s => s.id === c.studentId);
-                            if(!st) return '';
-                            return `
-                                <div class="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-50 last:border-0 group">
-                                    <div class="text-center min-w-[50px]">
-                                        <p class="font-bold text-gray-800 text-sm">${c.time}</p>
-                                        <p class="text-[10px] text-gray-400">${c.duration} min</p>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="font-medium text-gray-800 text-sm">${st.name}</p>
-                                        <p class="text-xs text-violet-500">${st.subject}</p>
-                                    </div>
-                                    <div class="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                        <button onclick="editClass(${c.id})" class="text-gray-300 hover:text-violet-600 p-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                        </button>
-                                        <button onclick="deleteClass(${c.id})" class="text-gray-300 hover:text-red-500 p-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
+    // Función auxiliar para actualizar el array en Firestore
+    async function updateStudentMaterials(newItem) {
+        const studentRef = window.doc(window.db, "students", currentStudentId);
+        const student = students.find(s => s.id === currentStudentId);
+        // Crear nuevo array con el item agregado
+        const newMaterials = [...(student.materials || []), newItem];
+        
+        await window.updateDoc(studentRef, { materials: newMaterials });
     }
 
-    // FORMULARIO DE CLASE (AGREGAR Y EDITAR)
-    document.getElementById('addClassForm').addEventListener('submit', (e) => {
+    window.deleteMaterialItem = async function(createdAt) {
+        if(confirm("¿Seguro que quieres borrar este elemento?") && currentStudentId) {
+            const studentRef = window.doc(window.db, "students", currentStudentId);
+            const student = students.find(s => s.id === currentStudentId);
+            // Filtrar para quitar el item
+            const newMaterials = student.materials.filter(m => m.createdAt !== createdAt);
+            
+            await window.updateDoc(studentRef, { materials: newMaterials });
+        }
+    }
+
+    // 4. CLASES Y HORARIOS (FIREBASE)
+    window.addClassFormSubmit = async function(e) {
         e.preventDefault();
-        
-        const studentId = parseInt(document.getElementById('classStudent').value);
+        const sId = document.getElementById('classStudent').value;
         const day = parseInt(document.getElementById('classDay').value);
         const time = document.getElementById('classTime').value;
         const duration = parseInt(document.getElementById('classDuration').value);
-        
-        // VALIDACIÓN DE DUPLICADOS
-        // Buscamos si ya existe una clase para este alumno, este día y a esta hora
-        // Excluimos la clase que estamos editando (si es que estamos editando)
+
+        // Validación duplicados (Usando weeklySchedule que viene de la nube)
         const duplicate = weeklySchedule.find(c => 
             c.dayOfWeek == day && 
             c.time == time && 
-            c.studentId == studentId && 
+            c.studentId == sId && 
             c.id !== editingClassId
         );
 
@@ -687,43 +578,30 @@
             return;
         }
 
+        const data = {
+            studentId: sId,
+            dayOfWeek: day,
+            time: time,
+            duration: duration,
+            recurring: true
+        };
+
         if (editingClassId) {
-            // MODO EDICIÓN
-            const cls = weeklySchedule.find(c => c.id === editingClassId);
-            if(cls) {
-                cls.studentId = studentId;
-                cls.dayOfWeek = day;
-                cls.time = time;
-                cls.duration = duration;
-            }
+            await window.updateDoc(window.doc(window.db, "schedule", editingClassId), data);
         } else {
-            // MODO CREACIÓN
-            const newClass = {
-                id: Date.now(),
-                studentId: studentId,
-                dayOfWeek: day,
-                time: time,
-                duration: duration,
-                recurring: true
-            };
-            weeklySchedule.push(newClass);
+            await window.addDoc(window.collection(window.db, "schedule"), data);
         }
         
-        saveData();
-        renderWeeklySchedule();
-        hideAddClassModal();
-    });
+        window.hideAddClassModal();
+    }
 
-    // Funciones para gestionar clases (Editar / Borrar)
-    function deleteClass(classId) {
-        if(confirm("¿Seguro que quieres eliminar esta clase del horario?")) {
-            weeklySchedule = weeklySchedule.filter(c => c.id !== classId);
-            saveData();
-            renderWeeklySchedule();
+    window.deleteClass = async function(classId) {
+        if(confirm("¿Seguro que quieres eliminar esta clase?")) {
+            await window.deleteDoc(window.doc(window.db, "schedule", classId));
         }
     }
 
-    function editClass(classId) {
+    window.editClass = function(classId) {
         const cls = weeklySchedule.find(c => c.id === classId);
         if(!cls) return;
 
@@ -736,7 +614,6 @@
         document.getElementById('classTime').value = cls.time;
         document.getElementById('classDuration').value = cls.duration;
 
-        // Configurar estado de edición
         editingClassId = classId;
         document.getElementById('classModalTitle').innerText = "Editar Clase";
         
@@ -744,52 +621,120 @@
         document.getElementById('addClassModal').classList.add('flex');
     }
 
-    function showHome() {
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-        document.getElementById('homeView').classList.add('active');
-        document.getElementById('navHome').classList.add('text-violet-600');
-        document.getElementById('navAgenda').classList.remove('text-violet-600');
+    window.renderWeeklySchedule = function() {
+        const container = document.getElementById('weeklySchedule');
+        const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+        const todayIndex = new Date().getDay() - 1;
+        let html = "";
+        days.forEach((dayName, i) => {
+            const classes = weeklySchedule.filter(c => c.dayOfWeek == i).sort((a,b) => a.time.localeCompare(b.time));
+            const headerClass = (i === todayIndex) ? "bg-violet-600 text-white shadow-md" : "bg-gray-100 text-gray-600";
+            html += `
+                <div class="rounded-xl overflow-hidden border border-gray-100 mb-4">
+                    <div class="px-4 py-2 ${headerClass} flex justify-between items-center"><span class="font-bold text-sm">${dayName}</span>${(i === todayIndex) ? '<span class="text-[10px] bg-white/20 px-2 rounded-full">HOY</span>' : ''}</div>
+                    <div class="bg-white p-2">${classes.length === 0 ? '<p class="text-xs text-gray-300 text-center py-2">Libre</p>' : classes.map(c => {
+                        const st = students.find(s => s.id === c.studentId);
+                        if(!st) return ''; 
+                        return `
+                            <div class="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg border-b border-gray-50 group">
+                                <div class="text-center min-w-[50px]"><p class="font-bold text-gray-800 text-sm">${c.time}</p><p class="text-[10px] text-gray-400">${c.duration} min</p></div>
+                                <div class="flex-1"><p class="font-medium text-gray-800 text-sm">${st.name}</p><p class="text-xs text-violet-500">${st.subject}</p></div>
+                                <div class="flex gap-2"><button onclick="editClass('${c.id}')" class="text-gray-300 hover:text-violet-600">✎</button><button onclick="deleteClass('${c.id}')" class="text-gray-300 hover:text-red-500">🗑</button></div>
+                            </div>`;
+                    }).join('')}</div>
+                </div>`;
+        });
+        container.innerHTML = html;
     }
-    function showAgenda() {
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-        document.getElementById('agendaView').classList.add('active');
-        document.getElementById('navHome').classList.remove('text-violet-600');
-        document.getElementById('navAgenda').classList.add('text-violet-600');
+
+    // 5. EDICIÓN Y BORRADO DE ALUMNO
+    window.editCurrentStudent = function() {
+        if(!currentStudentId) return;
+        const s = students.find(x => x.id === currentStudentId);
+        document.getElementById('newStudentName').value = s.name;
+        document.getElementById('newStudentSubject').value = s.subject;
+        document.getElementById('newStudentAddress').value = s.address;
+        document.getElementById('newStudentPhone').value = s.phone;
+        document.getElementById('newStudentParent').value = s.parent;
+        
+        document.getElementById('modalTitle').innerText = "Editar Alumno";
+        document.getElementById('addStudentModal').classList.remove('hidden');
+        document.getElementById('addStudentModal').classList.add('flex');
     }
+
+    window.deleteCurrentStudent = async function() {
+        if(confirm("ADVERTENCIA: Se borrará el alumno y todo su historial de la nube. ¿Estás seguro?") && currentStudentId) {
+            await window.deleteDoc(window.doc(window.db, "students", currentStudentId));
+            
+            // Opcional: Limpiar sus clases del horario
+            const classesToDelete = weeklySchedule.filter(c => c.studentId === currentStudentId);
+            classesToDelete.forEach(c => window.deleteDoc(window.doc(window.db, "schedule", c.id)));
+            
+            window.showHome();
+        }
+    }
+
+    // AUXILIARES
+    function getInitials(name) { return name ? name.substring(0,2).toUpperCase() : "??"; }
     
-    function showAddStudentModal() { 
-        editingStudentId = null; 
+    // Conectar Event Listeners a las funciones globales
+    document.getElementById('addStudentForm').addEventListener('submit', window.addStudentFormSubmit);
+    document.getElementById('addClassForm').addEventListener('submit', window.addClassFormSubmit);
+
+    // Funciones UI (Navegación y Modales)
+    window.showHome = function() { document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); document.getElementById('homeView').classList.add('active'); document.getElementById('navHome').classList.add('text-violet-600'); document.getElementById('navAgenda').classList.remove('text-violet-600'); }
+    window.showAgenda = function() { document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); document.getElementById('agendaView').classList.add('active'); document.getElementById('navHome').classList.remove('text-violet-600'); document.getElementById('navAgenda').classList.add('text-violet-600'); window.renderWeeklySchedule(); }
+    
+    window.showAddStudentModal = function() { 
+        currentStudentId = null; 
         document.getElementById('modalTitle').innerText = "Nuevo Alumno";
         document.getElementById('addStudentModal').classList.remove('hidden'); 
         document.getElementById('addStudentModal').classList.add('flex'); 
     }
-    function hideAddStudentModal() { 
-        document.getElementById('addStudentModal').classList.add('hidden'); 
-        document.getElementById('addStudentModal').classList.remove('flex'); 
-    }
+    window.hideAddStudentModal = function() { document.getElementById('addStudentModal').classList.add('hidden'); document.getElementById('addStudentModal').classList.remove('flex'); }
     
-    function showAddClassModal() {
-        editingClassId = null; // Reseteamos para crear nuevo
+    window.showAddClassModal = function() {
+        editingClassId = null;
         document.getElementById('classModalTitle').innerText = "Agendar Clase";
         document.getElementById('addClassForm').reset();
         
         const select = document.getElementById('classStudent');
         select.innerHTML = students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-        if(students.length === 0) return alert("Primero crea un alumno.");
+        if(students.length===0) return alert("Primero crea un alumno.");
         
         document.getElementById('addClassModal').classList.remove('hidden');
         document.getElementById('addClassModal').classList.add('flex');
     }
-    function hideAddClassModal() { document.getElementById('addClassModal').classList.add('hidden'); document.getElementById('addClassModal').classList.remove('flex'); }
+    window.hideAddClassModal = function() { document.getElementById('addClassModal').classList.add('hidden'); document.getElementById('addClassModal').classList.remove('flex'); }
 
-    window.onclick = function(event) {
-        if (event.target.id === 'addStudentModal') hideAddStudentModal();
-        if (event.target.id === 'addClassModal') hideAddClassModal();
-        // Si click en fondo negro del modal imagen, cerrar
-        if (event.target.id === 'imageModal') closeImageModal();
+    window.openInMaps = function() {
+        const student = students.find(s => s.id === currentStudentId);
+        if(!student || !student.address) return alert("Agrega una dirección primero.");
+        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(student.address)}`;
+        window.open(url, '_blank');
     }
 
-    init();
+    // ZOOM Y EVENTOS
+    let scale = 1, currentScale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0, isDragging = false, initialDistance = 0;
+    const modalImage = document.getElementById('modalImageFull');
+    const modalContainer = document.getElementById('imageModal');
+
+    window.openImageModal = function(url) { modalImage.src = url; modalContainer.classList.remove('hidden'); modalContainer.classList.add('flex'); resetZoom(); }
+    window.closeImageModal = function() { modalContainer.classList.add('hidden'); modalContainer.classList.remove('flex'); setTimeout(() => { modalImage.src = ''; }, 200); }
+    function resetZoom() { scale = 1; pointX = 0; pointY = 0; updateTransform(); }
+    function updateTransform() { modalImage.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`; }
+
+    modalImage.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { isDragging = false; initialDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY); currentScale = scale; } else if (e.touches.length === 1) { isDragging = true; startX = e.touches[0].pageX - pointX; startY = e.touches[0].pageY - pointY; } });
+    modalImage.addEventListener('touchmove', (e) => { e.preventDefault(); if (e.touches.length === 2) { const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY); scale = Math.min(Math.max(1, currentScale * (dist / initialDistance)), 4); updateTransform(); } else if (e.touches.length === 1 && isDragging && scale > 1) { pointX = e.touches[0].pageX - startX; pointY = e.touches[0].pageY - startY; updateTransform(); } });
+    modalImage.addEventListener('touchend', (e) => { isDragging = false; if (scale < 1.1) resetZoom(); });
+    let lastTap = 0;
+    modalImage.addEventListener('touchend', (e) => { const currentTime = new Date().getTime(); const tapLength = currentTime - lastTap; if (tapLength < 300 && tapLength > 0) { if (scale > 1) resetZoom(); else { scale = 2; updateTransform(); } } lastTap = currentTime; });
+
+    window.onclick = function(e) { 
+        if (e.target.id === 'addStudentModal') hideAddStudentModal();
+        if (e.target.id === 'addClassModal') hideAddClassModal();
+        if (e.target.id === 'imageModal') closeImageModal();
+    }
   </script>
 </body>
 </html>
