@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Aula Virtual Abril</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            violet: {
+              50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd',
+              400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+    .view { display: none; }
+    .view.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .feed-item::before {
+      content: ''; position: absolute; left: 15px; top: 40px; bottom: -16px; width: 2px; background: #ddd6fe;
+    }
+    .feed-item:last-child::before { display: none; }
+    
+    /* Estilos para el Zoom */
+    #imageModal { touch-action: none; } 
+    #modalImageFull { 
+        transform-origin: center center; 
+        transition: transform 0.1s ease-out; 
+        touch-action: none;
+    }
+  </style>
+</head>
+<body class="bg-violet-50 min-h-screen pb-20">
+  
+  <input type="file" id="imageInput" accept="image/*" class="hidden" onchange="processImage(this)">
+
+  <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe">
+    <div class="flex justify-around items-center h-16">
+      <button onclick="showHome()" id="navHome" class="flex flex-col items-center gap-1 px-4 py-2 text-violet-600 transition-colors duration-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+        <span class="text-xs font-medium">Alumnos</span>
+      </button>
+      <button onclick="showAgenda()" id="navAgenda" class="flex flex-col items-center gap-1 px-4 py-2 text-gray-400 transition-colors duration-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <span class="text-xs font-medium">Agenda</span>
+      </button>
+    </div>
+  </nav>
+
+  <div id="homeView" class="view active">
+    <header class="bg-white shadow-sm sticky top-0 z-30 pt-safe">
+      <div class="px-4 py-5">
+        <h1 class="text-2xl font-bold text-violet-700">Mis Alumnos</h1>
+        <p class="text-violet-400 text-sm mt-1">Gestión de clases </p>
+      </div>
+      <div class="px-4 pb-4">
+        <div class="relative">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input type="text" id="searchInput" onkeyup="filterStudents()" placeholder="Buscar alumno..." 
+            class="w-full pl-10 pr-4 py-3 bg-violet-50 border border-violet-100 rounded-xl focus:ring-2 focus:ring-violet-500 outline-none transition-all text-sm">
+        </div>
+      </div>
+    </header>
+
+    <main class="px-4 py-6">
+      <div id="studentList" class="space-y-4">
+        </div>
+    </main>
+
+    <button onclick="showAddStudentModal()" class="fixed bottom-20 right-6 w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-110 active:scale-95 z-30">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+      </svg>
+    </button>
+  </div>
+
+  <div id="detailView" class="view">
+    <header class="bg-violet-600 text-white sticky top-0 z-30 pt-safe shadow-md">
+      <div class="px-4 py-4">
+        <button onclick="showHome()" class="flex items-center gap-2 text-violet-100 hover:text-white mb-3 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          <span class="text-sm font-medium">Volver</span>
+        </button>
+        <div class="flex justify-between items-start">
+            <div>
+                <h1 id="studentName" class="text-2xl font-bold"></h1>
+                <p id="studentSubject" class="text-violet-200 text-sm mt-1"></p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="editCurrentStudent()" class="text-violet-200 hover:text-white text-sm bg-violet-700/50 px-3 py-1 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                </button>
+                <button onclick="deleteCurrentStudent()" class="text-violet-200 hover:text-red-200 text-sm bg-violet-700/50 px-3 py-1 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+            </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="px-4 py-6">
+      <div class="bg-white rounded-2xl shadow-sm p-5 mb-6 border border-gray-100">
+        <div class="flex items-start gap-4">
+          <div class="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-gray-800 mb-1">Dirección</h3>
+            <p id="studentAddress" class="text-gray-500 text-sm mb-3"></p>
+            <button onclick="openInMaps()" class="w-full bg-blue-50 hover:bg-blue-100 text-blue-600 font-medium py-2 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 border border-blue-200">
+               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+               Abrir en Google Maps
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm p-5 mb-6 border border-gray-100">
+        <h3 class="font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide text-violet-500">Contacto</h3>
+        <div class="space-y-3 text-sm">
+          <div class="flex items-center gap-3">
+            <span class="text-gray-400 w-16">Teléfono:</span>
+            <a id="studentPhone" href="#" class="text-violet-600 font-medium hover:underline"></a>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-gray-400 w-16">Tutor:</span>
+            <span id="studentParent" class="text-gray-700 font-medium"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+        <h3 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+          Material y Notas
+        </h3>
+        
+        <div class="bg-violet-50 rounded-xl p-3 mb-6">
+          <textarea id="feedNoteInput" placeholder="Escribe un progreso o nota de la clase..." rows="2" class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 outline-none resize-none mb-3"></textarea>
+          <div class="flex gap-2">
+             <button onclick="document.getElementById('imageInput').click()" class="flex-1 bg-white border border-violet-200 text-violet-600 py-2 px-3 rounded-lg text-sm font-medium hover:bg-violet-50 flex items-center justify-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                Foto
+             </button>
+             
+             <button onclick="attachLink()" class="flex-1 bg-white border border-violet-200 text-violet-600 py-2 px-3 rounded-lg text-sm font-medium hover:bg-violet-50 flex items-center justify-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                Link
+             </button>
+          </div>
+          <button onclick="addFeedNote()" class="w-full mt-2 bg-violet-600 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-violet-700 shadow-sm">
+             Guardar Nota
+          </button>
+        </div>
+        
+        <div id="materialFeed" class="space-y-0">
+          </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="agendaView" class="view">
+    <header class="bg-white shadow-sm sticky top-0 z-30 pt-safe">
+      <div class="px-4 py-5">
+        <h1 class="text-2xl font-bold text-violet-700">¿A quién veo hoy?</h1>
+        <p class="text-violet-400 text-sm mt-1">Horario semanal de clases</p>
+      </div>
+    </header>
+    <main class="px-4 py-6">
+      <div id="weeklySchedule" class="space-y-4">
+        </div>
+    </main>
+    <button onclick="showAddClassModal()" class="fixed bottom-20 right-6 w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-110 active:scale-95 z-30">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+      </svg>
+    </button>
+  </div>
+
+  <div id="addStudentModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl transform transition-all">
+      <h2 id="modalTitle" class="text-xl font-bold text-gray-800 mb-4">Nuevo Alumno</h2>
+      <form id="addStudentForm" class="space-y-3">
+        <input type="text" id="newStudentName" required placeholder="Nombre completo" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none">
+        <input type="text" id="newStudentSubject" required placeholder="Materia (ej. Matemáticas)" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none">
+        <input type="text" id="newStudentAddress" placeholder="Dirección exacta (para el mapa)" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none">
+        <input type="tel" id="newStudentPhone" placeholder="Teléfono" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none">
+        <input type="text" id="newStudentParent" placeholder="Nombre del Padre/Tutor" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none">
+        
+        <div class="flex gap-3 pt-2">
+          <button type="button" onclick="hideAddStudentModal()" class="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-xl">Cancelar</button>
+          <button type="submit" class="flex-1 bg-violet-600 text-white font-medium py-3 rounded-xl hover:bg-violet-700 shadow-lg shadow-violet-200">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="addClassModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+      <h2 id="classModalTitle" class="text-xl font-bold text-gray-800 mb-4">Agendar Clase</h2>
+      <form id="addClassForm" class="space-y-3">
+        <div>
+            <label class="text-xs font-bold text-gray-500 ml-1">Alumno</label>
+            <select id="classStudent" required class="w-full border border-gray-200 rounded-xl px-4 py-3 bg-white focus:ring-2 focus:ring-violet-500 outline-none"></select>
+        </div>
+        <div>
+            <label class="text-xs font-bold text-gray-500 ml-1">Día</label>
+            <select id="classDay" required class="w-full border border-gray-200 rounded-xl px-4 py-3 bg-white focus:ring-2 focus:ring-violet-500 outline-none">
+                <option value="0">Lunes</option><option value="1">Martes</option><option value="2">Miércoles</option><option value="3">Jueves</option><option value="4">Viernes</option>
+            </select>
+        </div>
+        <div class="flex gap-3">
+            <div class="flex-1">
+                <label class="text-xs font-bold text-gray-500 ml-1">Hora</label>
+                <input type="time" id="classTime" required class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none">
+            </div>
+            <div class="flex-1">
+                <label class="text-xs font-bold text-gray-500 ml-1">Duración</label>
+                <select id="classDuration" class="w-full border border-gray-200 rounded-xl px-4 py-3 bg-white focus:ring-2 focus:ring-violet-500 outline-none">
+                    <option value="60">1 hora</option><option value="90">1.5 horas</option><option value="120">2 horas</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3 p-3 bg-violet-50 rounded-xl">
+          <input type="checkbox" id="repeatWeekly" checked class="w-5 h-5 text-violet-600 rounded focus:ring-violet-500">
+          <label for="repeatWeekly" class="text-sm text-gray-700 font-medium">Repetir todas las semanas</label>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" onclick="hideAddClassModal()" class="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-xl">Cancelar</button>
+          <button type="submit" class="flex-1 bg-violet-600 text-white font-medium py-3 rounded-xl hover:bg-violet-700 shadow-lg shadow-violet-200">Agendar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="imageModal" class="fixed inset-0 bg-black z-[60] hidden overflow-hidden justify-center items-center">
+    <button onclick="closeImageModal()" class="absolute top-4 right-4 text-white bg-black/50 hover:bg-white/20 rounded-full p-3 transition-colors z-[70]">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+    </button>
+    <div id="modalImageContainer" class="w-full h-full flex items-center justify-center overflow-hidden">
+        <img id="modalImageFull" src="" class="max-w-full max-h-full object-contain">
+    </div>
+  </div>
+
+  <script>
+    // --- LÓGICA DE LA APLICACIÓN ---
+
+    let students = JSON.parse(localStorage.getItem('teacherApp_students')) || [];
+    let weeklySchedule = JSON.parse(localStorage.getItem('teacherApp_schedule')) || [];
+    let currentStudent = null;
+    let editingStudentId = null;
+    let editingClassId = null; // Nuevo: Para saber si estamos editando una clase
+
+    function saveData() {
+        try {
+            localStorage.setItem('teacherApp_students', JSON.stringify(students));
+            localStorage.setItem('teacherApp_schedule', JSON.stringify(weeklySchedule));
+        } catch (e) {
+            alert("¡Memoria llena! Intenta borrar algunas fotos antiguas.");
+        }
+    }
+
+    function init() {
+        renderStudentList();
+        renderWeeklySchedule();
+    }
+
+    // --- MANEJO DE IMÁGENES (COMPRESIÓN) ---
+    function processImage(input) {
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const MAX_WIDTH = 800;
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                    if(currentStudent) {
+                        currentStudent.materials.push({ id: Date.now(), type: 'image', content: dataUrl });
+                        saveData();
+                        renderMaterialFeed();
+                    }
+                }
+            }
+            reader.readAsDataURL(file);
+        }
+        input.value = '';
+    }
+
+    // --- LÓGICA DE ZOOM Y PAN (PELLIZCAR) ---
+    // Variables para el control de gestos
+    let scale = 1, currentScale = 1;
+    let pointX = 0, pointY = 0, startX = 0, startY = 0;
+    let isDragging = false;
+    let initialDistance = 0;
+
+    const modalImage = document.getElementById('modalImageFull');
+    const modalContainer = document.getElementById('imageModal');
+
+    function openImageModal(url) {
+        modalImage.src = url;
+        modalContainer.classList.remove('hidden');
+        modalContainer.classList.add('flex');
+        resetZoom(); // Reiniciar zoom al abrir
+    }
+
+    function closeImageModal() {
+        modalContainer.classList.add('hidden');
+        modalContainer.classList.remove('flex');
+        setTimeout(() => { modalImage.src = ''; }, 200);
+    }
+
+    function resetZoom() {
+        scale = 1;
+        pointX = 0;
+        pointY = 0;
+        updateTransform();
+    }
+
+    function updateTransform() {
+        modalImage.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+    }
+
+    // Eventos Táctiles para el Zoom
+    modalImage.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            // Inicia Pellizco
+            isDragging = false;
+            initialDistance = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+            currentScale = scale;
+        } else if (e.touches.length === 1) {
+            // Inicia Arrastre (solo si está con zoom)
+            isDragging = true;
+            startX = e.touches[0].pageX - pointX;
+            startY = e.touches[0].pageY - pointY;
+        }
+    });
+
+    modalImage.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // Prevenir scroll del navegador
+        
+        if (e.touches.length === 2) {
+            // Pellizcando (Zoom)
+            const dist = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+            // Calculamos el nuevo factor de escala
+            // Limitamos: mínimo 1x, máximo 4x
+            scale = Math.min(Math.max(1, currentScale * (dist / initialDistance)), 4);
+            updateTransform();
+        } else if (e.touches.length === 1 && isDragging && scale > 1) {
+            // Arrastrando (Pan) - Solo permitimos mover si hay zoom
+            pointX = e.touches[0].pageX - startX;
+            pointY = e.touches[0].pageY - startY;
+            updateTransform();
+        }
+    });
+
+    modalImage.addEventListener('touchend', (e) => {
+        isDragging = false;
+        if (scale < 1.1) {
+            // Si el zoom es muy pequeño al soltar, volvemos al centro
+            resetZoom();
+        }
+    });
+    
+    // Doble toque para resetear
+    let lastTap = 0;
+    modalImage.addEventListener('touchend', (e) => {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        if (tapLength < 300 && tapLength > 0) {
+            if (scale > 1) resetZoom();
+            else {
+                scale = 2; // Zoom rápido
+                updateTransform();
+            }
+        }
+        lastTap = currentTime;
+    });
+
+
+    // --- GESTIÓN DE ALUMNOS ---
+    function renderStudentList(data = students) {
+        const container = document.getElementById('studentList');
+        if (data.length === 0) {
+            container.innerHTML = `<div class="text-center py-12 opacity-50"><p>No hay alumnos aún.</p><p class="text-sm">Toca el botón + para empezar.</p></div>`;
+            return;
+        }
+        container.innerHTML = data.map(s => `
+            <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-4 border-l-4 border-violet-500" onclick="showStudentDetail(${s.id})">
+                <div class="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center text-violet-700 font-bold text-lg">
+                    ${getInitials(s.name)}
+                </div>
+                <div class="flex-1">
+                    <h3 class="font-semibold text-gray-800">${s.name}</h3>
+                    <p class="text-xs text-violet-500 font-medium uppercase">${s.subject}</p>
+                </div>
+                <button class="text-gray-300"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg></button>
+            </div>
+        `).join('');
+    }
+
+    function getInitials(name) { return name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase(); }
+
+    function filterStudents() {
+        const term = document.getElementById('searchInput').value.toLowerCase();
+        const filtered = students.filter(s => s.name.toLowerCase().includes(term) || s.subject.toLowerCase().includes(term));
+        renderStudentList(filtered);
+    }
+
+    document.getElementById('addStudentForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = document.getElementById('newStudentName').value;
+        const subject = document.getElementById('newStudentSubject').value;
+        const address = document.getElementById('newStudentAddress').value;
+        const phone = document.getElementById('newStudentPhone').value;
+        const parent = document.getElementById('newStudentParent').value;
+
+        if (editingStudentId) {
+            const student = students.find(s => s.id === editingStudentId);
+            if (student) {
+                student.name = name;
+                student.subject = subject;
+                student.address = address;
+                student.phone = phone;
+                student.parent = parent;
+                if (currentStudent && currentStudent.id === editingStudentId) {
+                    showStudentDetail(editingStudentId); 
+                }
+            }
+        } else {
+            const newStudent = {
+                id: Date.now(),
+                name: name,
+                subject: subject,
+                address: address,
+                phone: phone,
+                parent: parent,
+                materials: []
+            };
+            students.push(newStudent);
+        }
+        saveData();
+        renderStudentList();
+        renderWeeklySchedule(); 
+        hideAddStudentModal();
+        e.target.reset();
+    });
+
+    // --- DETALLE DEL ALUMNO ---
+    function showStudentDetail(id) {
+        currentStudent = students.find(s => s.id === id);
+        if(!currentStudent) return;
+        document.getElementById('studentName').innerText = currentStudent.name;
+        document.getElementById('studentSubject').innerText = currentStudent.subject;
+        document.getElementById('studentAddress').innerText = currentStudent.address || "Sin dirección";
+        document.getElementById('studentPhone').innerText = currentStudent.phone || "---";
+        document.getElementById('studentPhone').href = currentStudent.phone ? `tel:${currentStudent.phone}` : "#";
+        document.getElementById('studentParent').innerText = currentStudent.parent || "---";
+        renderMaterialFeed();
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('detailView').classList.add('active');
+        window.scrollTo(0,0);
+    }
+
+    function editCurrentStudent() {
+        if(!currentStudent) return;
+        document.getElementById('newStudentName').value = currentStudent.name;
+        document.getElementById('newStudentSubject').value = currentStudent.subject;
+        document.getElementById('newStudentAddress').value = currentStudent.address;
+        document.getElementById('newStudentPhone').value = currentStudent.phone;
+        document.getElementById('newStudentParent').value = currentStudent.parent;
+        document.getElementById('modalTitle').innerText = "Editar Alumno";
+        editingStudentId = currentStudent.id;
+        document.getElementById('addStudentModal').classList.remove('hidden');
+        document.getElementById('addStudentModal').classList.add('flex');
+    }
+
+    function deleteCurrentStudent() {
+        if(confirm("¿Estás seguro de eliminar a este alumno y todo su historial?")) {
+            students = students.filter(s => s.id !== currentStudent.id);
+            weeklySchedule = weeklySchedule.filter(c => c.studentId !== currentStudent.id);
+            saveData();
+            showHome();
+            renderStudentList();
+            renderWeeklySchedule();
+        }
+    }
+
+    function openInMaps() {
+        if(!currentStudent || !currentStudent.address) return alert("Agrega una dirección primero.");
+        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentStudent.address)}`;
+        window.open(url, '_blank');
+    }
+
+    // --- MURO Y RENDERIZADO DE FOTOS ---
+    function renderMaterialFeed() {
+        const feed = document.getElementById('materialFeed');
+        feed.innerHTML = "";
+        
+        if(currentStudent.materials.length === 0) {
+            feed.innerHTML = `<p class="text-center text-gray-400 text-sm py-4">Sin notas aún.</p>`;
+            return;
+        }
+        const sorted = [...currentStudent.materials].sort((a,b) => b.id - a.id);
+        sorted.forEach(item => {
+            let icon = '📝'; 
+            let contentHtml = '';
+            let colorClass = "border-l-4 border-violet-400";
+            let typeLabel = "NOTA";
+            if(item.type === 'link') {
+                icon = '🔗';
+                typeLabel = "LINK";
+                colorClass = "border-l-4 border-blue-400";
+                contentHtml = `
+                    <p class="text-gray-800 font-medium mb-1">${item.title || 'Enlace adjunto'}</p>
+                    <a href="${item.content}" target="_blank" class="text-blue-600 hover:underline text-xs break-all flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg> Abrir recurso
+                    </a>
+                `;
+            } else if (item.type === 'image') {
+                icon = '📷';
+                typeLabel = "FOTO";
+                colorClass = "border-l-4 border-pink-400";
+                contentHtml = `
+                    <div class="rounded-lg overflow-hidden border border-gray-200 mt-1 cursor-pointer hover:opacity-90 transition-opacity" onclick="openImageModal('${item.content}')">
+                        <img src="${item.content}" alt="Foto de clase" class="w-full h-auto object-cover max-h-48">
+                    </div>
+                `;
+            } else {
+                contentHtml = `<p class="text-gray-700">${item.content}</p>`;
+            }
+            const date = new Date(item.id).toLocaleDateString();
+            feed.innerHTML += `
+                <div class="feed-item relative pl-8 pb-6">
+                    <div class="absolute left-0 top-0 w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center text-sm shadow-sm z-10">${icon}</div>
+                    <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-100 ${colorClass}">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">${typeLabel}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400">${date}</span>
+                                <button onclick="deleteMaterialItem(${item.id})" class="text-gray-300 hover:text-red-500 transition-colors p-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="text-sm">${contentHtml}</div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function deleteMaterialItem(itemId) {
+        if(confirm("¿Seguro que quieres borrar este elemento?")) {
+            currentStudent.materials = currentStudent.materials.filter(m => m.id !== itemId);
+            saveData();
+            renderMaterialFeed();
+        }
+    }
+
+    function addFeedNote() {
+        const txt = document.getElementById('feedNoteInput').value.trim();
+        if(!txt) return;
+        currentStudent.materials.push({ id: Date.now(), type: 'note', content: txt });
+        saveData();
+        renderMaterialFeed();
+        document.getElementById('feedNoteInput').value = "";
+    }
+
+    function attachLink() {
+        const url = prompt("Pega aquí el enlace (Drive, YouTube, etc):");
+        if(url) {
+            const name = prompt("¿Qué nombre le ponemos?", "Material");
+            if(name) {
+                currentStudent.materials.push({ id: Date.now(), type: 'link', content: url, title: name });
+                saveData();
+                renderMaterialFeed();
+            }
+        }
+    }
+
+    // --- AGENDA SEMANAL Y CLASES ---
+    function renderWeeklySchedule() {
+        const container = document.getElementById('weeklySchedule');
+        const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+        const todayIndex = new Date().getDay() - 1; 
+        let html = "";
+        days.forEach((dayName, i) => {
+            const classes = weeklySchedule.filter(c => c.dayOfWeek == i).sort((a,b) => a.time.localeCompare(b.time));
+            const isToday = (i === todayIndex);
+            const headerClass = isToday ? "bg-violet-600 text-white shadow-md" : "bg-gray-100 text-gray-600";
+            html += `
+                <div class="rounded-xl overflow-hidden border border-gray-100 mb-4">
+                    <div class="px-4 py-2 ${headerClass} flex justify-between items-center">
+                        <span class="font-bold text-sm">${dayName}</span>
+                        ${isToday ? '<span class="text-[10px] bg-white/20 px-2 rounded-full">HOY</span>' : ''}
+                    </div>
+                    <div class="bg-white p-2">
+                        ${classes.length === 0 ? '<p class="text-xs text-gray-300 text-center py-2">Libre</p>' : ''}
+                        ${classes.map(c => {
+                            const st = students.find(s => s.id === c.studentId);
+                            if(!st) return '';
+                            return `
+                                <div class="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-50 last:border-0 group">
+                                    <div class="text-center min-w-[50px]">
+                                        <p class="font-bold text-gray-800 text-sm">${c.time}</p>
+                                        <p class="text-[10px] text-gray-400">${c.duration} min</p>
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="font-medium text-gray-800 text-sm">${st.name}</p>
+                                        <p class="text-xs text-violet-500">${st.subject}</p>
+                                    </div>
+                                    <div class="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                        <button onclick="editClass(${c.id})" class="text-gray-300 hover:text-violet-600 p-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                        </button>
+                                        <button onclick="deleteClass(${c.id})" class="text-gray-300 hover:text-red-500 p-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    // FORMULARIO DE CLASE (AGREGAR Y EDITAR)
+    document.getElementById('addClassForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const studentId = parseInt(document.getElementById('classStudent').value);
+        const day = parseInt(document.getElementById('classDay').value);
+        const time = document.getElementById('classTime').value;
+        const duration = parseInt(document.getElementById('classDuration').value);
+        
+        // VALIDACIÓN DE DUPLICADOS
+        // Buscamos si ya existe una clase para este alumno, este día y a esta hora
+        // Excluimos la clase que estamos editando (si es que estamos editando)
+        const duplicate = weeklySchedule.find(c => 
+            c.dayOfWeek == day && 
+            c.time == time && 
+            c.studentId == studentId && 
+            c.id !== editingClassId
+        );
+
+        if(duplicate) {
+            alert("¡Cuidado! Este alumno ya tiene una clase agendada ese día a esa hora.");
+            return;
+        }
+
+        if (editingClassId) {
+            // MODO EDICIÓN
+            const cls = weeklySchedule.find(c => c.id === editingClassId);
+            if(cls) {
+                cls.studentId = studentId;
+                cls.dayOfWeek = day;
+                cls.time = time;
+                cls.duration = duration;
+            }
+        } else {
+            // MODO CREACIÓN
+            const newClass = {
+                id: Date.now(),
+                studentId: studentId,
+                dayOfWeek: day,
+                time: time,
+                duration: duration,
+                recurring: true
+            };
+            weeklySchedule.push(newClass);
+        }
+        
+        saveData();
+        renderWeeklySchedule();
+        hideAddClassModal();
+    });
+
+    // Funciones para gestionar clases (Editar / Borrar)
+    function deleteClass(classId) {
+        if(confirm("¿Seguro que quieres eliminar esta clase del horario?")) {
+            weeklySchedule = weeklySchedule.filter(c => c.id !== classId);
+            saveData();
+            renderWeeklySchedule();
+        }
+    }
+
+    function editClass(classId) {
+        const cls = weeklySchedule.find(c => c.id === classId);
+        if(!cls) return;
+
+        // Llenar datos en el modal
+        const select = document.getElementById('classStudent');
+        select.innerHTML = students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        select.value = cls.studentId;
+        
+        document.getElementById('classDay').value = cls.dayOfWeek;
+        document.getElementById('classTime').value = cls.time;
+        document.getElementById('classDuration').value = cls.duration;
+
+        // Configurar estado de edición
+        editingClassId = classId;
+        document.getElementById('classModalTitle').innerText = "Editar Clase";
+        
+        document.getElementById('addClassModal').classList.remove('hidden');
+        document.getElementById('addClassModal').classList.add('flex');
+    }
+
+    function showHome() {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('homeView').classList.add('active');
+        document.getElementById('navHome').classList.add('text-violet-600');
+        document.getElementById('navAgenda').classList.remove('text-violet-600');
+    }
+    function showAgenda() {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('agendaView').classList.add('active');
+        document.getElementById('navHome').classList.remove('text-violet-600');
+        document.getElementById('navAgenda').classList.add('text-violet-600');
+    }
+    
+    function showAddStudentModal() { 
+        editingStudentId = null; 
+        document.getElementById('modalTitle').innerText = "Nuevo Alumno";
+        document.getElementById('addStudentModal').classList.remove('hidden'); 
+        document.getElementById('addStudentModal').classList.add('flex'); 
+    }
+    function hideAddStudentModal() { 
+        document.getElementById('addStudentModal').classList.add('hidden'); 
+        document.getElementById('addStudentModal').classList.remove('flex'); 
+    }
+    
+    function showAddClassModal() {
+        editingClassId = null; // Reseteamos para crear nuevo
+        document.getElementById('classModalTitle').innerText = "Agendar Clase";
+        document.getElementById('addClassForm').reset();
+        
+        const select = document.getElementById('classStudent');
+        select.innerHTML = students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        if(students.length === 0) return alert("Primero crea un alumno.");
+        
+        document.getElementById('addClassModal').classList.remove('hidden');
+        document.getElementById('addClassModal').classList.add('flex');
+    }
+    function hideAddClassModal() { document.getElementById('addClassModal').classList.add('hidden'); document.getElementById('addClassModal').classList.remove('flex'); }
+
+    window.onclick = function(event) {
+        if (event.target.id === 'addStudentModal') hideAddStudentModal();
+        if (event.target.id === 'addClassModal') hideAddClassModal();
+        // Si click en fondo negro del modal imagen, cerrar
+        if (event.target.id === 'imageModal') closeImageModal();
+    }
+
+    init();
+  </script>
+</body>
+</html>
